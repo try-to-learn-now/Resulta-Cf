@@ -43,7 +43,7 @@ export async function getCachedOrFetchBatch(baseUrl, regNo, queryParams, ctx) {
       return freshBatch;
 
     } else if (Array.isArray(freshBatch)) {
-      // --- GOOD BATCH (All 'success' or 'Record not found') ---
+      // --- GOOD BATCH (Cache it!) ---
       // console.log(`[${regNo}] Fetch SUCCEEDED. Caching.`);
       const responseToCache = new Response(JSON.stringify(freshBatch), {
         headers: {
@@ -100,7 +100,7 @@ export async function fetchVercelBatch(baseUrl, regNo, queryParams) {
    try {
        const response = await fetch(targetUrl, {
            signal: controller.signal,
-           headers: { 'Accept': 'application/json', 'User-Agent': 'Cloudflare-MultiWorker-Simple' }
+           headers: { 'Accept': 'application/json', 'User-Agent': 'Cloudflare-MultiWorker-Simple' } // Updated Agent
        });
        clearTimeout(timeoutId); // Clear timeout if fetch completes
 
@@ -109,8 +109,11 @@ export async function fetchVercelBatch(baseUrl, regNo, queryParams) {
              const errorText = await response.text();
             console.warn(`Vercel backend HTTP error for ${regNo}: ${response.status} ${response.statusText} - ${errorText}`);
             // Return a consistent error format for the batch
-            return Array(BATCH_STEP).fill(null).map((_, i) => ({
-                regNo: `${regNo.slice(0,-3)}${String(parseInt(regNo.slice(-3)) + i).padStart(3,'0')}`, // Guess regNo
+             // Calculate potential regNos in the failed batch for better error reporting
+            const baseNum = parseInt(regNo.slice(-3));
+            const batchRegNos = Array.from({ length: BATCH_STEP }, (_, i) => `${regNo.slice(0,-3)}${String(baseNum + i).padStart(3,'0')}`);
+            return batchRegNos.map(rn => ({
+                regNo: rn,
                 status: 'Error',
                 reason: `Backend Error: HTTP ${response.status}`
             }));
@@ -122,24 +125,31 @@ export async function fetchVercelBatch(baseUrl, regNo, queryParams) {
             // Ensure Vercel returns an array (as expected from its logic)
             if (!Array.isArray(data)) {
                  console.error(`Vercel response for ${regNo} is not an array:`, data);
-                 return Array(BATCH_STEP).fill(null).map((_, i) => ({
-                    regNo: `${regNo.slice(0,-3)}${String(parseInt(regNo.slice(-3)) + i).padStart(3,'0')}`,
+                 const baseNum = parseInt(regNo.slice(-3));
+                 const batchRegNos = Array.from({ length: BATCH_STEP }, (_, i) => `${regNo.slice(0,-3)}${String(baseNum + i).padStart(3,'0')}`);
+                 return batchRegNos.map(rn => ({
+                    regNo: rn,
                     status: 'Error',
                     reason: 'Backend Response Invalid Format'
                  }));
             }
             // Add regNo to error objects if Vercel didn't (safety check)
+            // Ensure Vercel's response structure is respected
+            const baseNum = parseInt(regNo.slice(-3));
             return data.map((item, i) => {
+                 // Vercel should already include regNo, but add defensively if missing on error/not_found
                 if (!item.regNo && (item.status?.includes('Error') || item.status === 'Record not found')) {
-                    item.regNo = `${regNo.slice(0,-3)}${String(parseInt(regNo.slice(-3)) + i).padStart(3,'0')}`;
+                    item.regNo = `${regNo.slice(0,-3)}${String(baseNum + i).padStart(3,'0')}`;
                 }
                 return item;
             });
        } catch (jsonError) {
              console.error(`Failed to parse JSON response from ${targetUrl}: ${jsonError}`);
              // Return error format for the batch
-            return Array(BATCH_STEP).fill(null).map((_, i) => ({
-                regNo: `${regNo.slice(0,-3)}${String(parseInt(regNo.slice(-3)) + i).padStart(3,'0')}`,
+            const baseNum = parseInt(regNo.slice(-3));
+            const batchRegNos = Array.from({ length: BATCH_STEP }, (_, i) => `${regNo.slice(0,-3)}${String(baseNum + i).padStart(3,'0')}`);
+            return batchRegNos.map(rn => ({
+                regNo: rn,
                 status: 'Error',
                 reason: `Backend Response JSON Parse Error`
             }));
@@ -149,8 +159,10 @@ export async function fetchVercelBatch(baseUrl, regNo, queryParams) {
         let reason = error.name === 'AbortError' ? 'Request Timed Out (35s)' : error.message;
         console.warn(`FetchVercelBatch failed for ${regNo}: ${reason}`);
         // Return error format for the batch
-        return Array(BATCH_STEP).fill(null).map((_, i) => ({
-            regNo: `${regNo.slice(0,-3)}${String(parseInt(regNo.slice(-3)) + i).padStart(3,'0')}`,
+        const baseNum = parseInt(regNo.slice(-3));
+        const batchRegNos = Array.from({ length: BATCH_STEP }, (_, i) => `${regNo.slice(0,-3)}${String(baseNum + i).padStart(3,'0')}`);
+        return batchRegNos.map(rn => ({
+            regNo: rn,
             status: 'Error',
             reason: `Fetch Failed: ${reason}`
         }));
@@ -172,4 +184,4 @@ export function calculatePrefixes(regNo) {
         lePrefix = (parseInt(firstTwo) + 1).toString() + restReg;
     }
     return { regularPrefix, lePrefix };
-}
+                                       }
