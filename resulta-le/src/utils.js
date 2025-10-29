@@ -184,4 +184,4 @@ export function calculatePrefixes(regNo) {
         lePrefix = (parseInt(firstTwo) + 1).toString() + restReg;
     }
     return { regularPrefix, lePrefix };
-                                       }
+              }
