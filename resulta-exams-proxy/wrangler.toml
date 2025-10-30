@@ -1,0 +1,4 @@
+name = "resulta-exams-proxy"
+main = "src/index.js"
+compatibility_date = "2024-05-01"
+# NO KV, NO CRON needed
