@@ -6,10 +6,10 @@ export default {
     const cache = caches.default;
     const cacheKey = new Request(BEU_API_URL); // Use a single cache key
 
-    // === NEW: Handle Secret PURGE Command ===
+    // === Handle Secret PURGE Command ===
     if (request.method === 'PURGE') {
       // Check for the secret header.
-      // This MUST match the secret you send from pages/api/revalidate.js
+      // This MUST match the secret you set in your env.
       if (request.headers.get('X-PURGE-SECRET') !== env.MY_SECRET_TOKEN) {
         return new Response(JSON.stringify({ error: 'Invalid secret token' }), { status: 401 });
       }
@@ -67,9 +67,13 @@ export default {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*', // The magic header
         'Access-Control-Allow-Methods': 'GET, OPTIONS',
-        // This is the "expire date" (1 DAY)
-        // It protects your ResultFinder.js page
-        'Cache-Control': 'public, s-maxage=86400' 
+        //
+        // --- YOUR FINAL FIX IS HERE ---
+        // Cache for 30 DAYS (2592000s).
+        // It will never expire between your manual updates.
+        // This is the "fast as fuck" setting.
+        'Cache-Control': 'public, s-maxage=2592000' 
+        //
       }
     });
 
