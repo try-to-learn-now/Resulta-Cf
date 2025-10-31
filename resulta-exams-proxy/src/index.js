@@ -1,16 +1,31 @@
-// This worker's ONLY job is to fetch the BEU exam list and add CORS headers
+// This worker's ONLY job is to fetch the BEU exam list, add CORS, and cache it.
 const BEU_API_URL = 'https://beu-bih.ac.in/backend/v1/result/sem-get';
 
 export default {
   async fetch(request, env, ctx) {
+    const cache = caches.default;
+    const cacheKey = new Request(BEU_API_URL); // Use a single cache key
+
+    // === NEW: Handle Secret PURGE Command ===
+    if (request.method === 'PURGE') {
+      // Check for the secret header.
+      // This MUST match the secret you send from pages/api/revalidate.js
+      if (request.headers.get('X-PURGE-SECRET') !== env.MY_SECRET_TOKEN) {
+        return new Response(JSON.stringify({ error: 'Invalid secret token' }), { status: 401 });
+      }
+      
+      await cache.delete(cacheKey);
+      console.log('CACHE PURGED');
+      return new Response(JSON.stringify({ purged: true }), { status: 200 });
+    }
+    // === END NEW ===
+
     // Handle CORS preflight (OPTIONS)
     if (request.method === 'OPTIONS') {
       return handleOptions();
     }
 
-    // Use cache to avoid hitting BEU's server every time
-    const cache = caches.default;
-    const cacheKey = new Request(BEU_API_URL, { headers: request.headers });
+    // Check cache for normal GET requests
     let response = await cache.match(cacheKey);
 
     if (response) {
@@ -52,7 +67,9 @@ export default {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*', // The magic header
         'Access-Control-Allow-Methods': 'GET, OPTIONS',
-        'Cache-Control': 'public, s-maxage=3600' // Cache for 1 hour
+        // This is the "expire date" (1 DAY)
+        // It protects your ResultFinder.js page
+        'Cache-Control': 'public, s-maxage=86400' 
       }
     });
 
@@ -65,8 +82,8 @@ function handleOptions() {
   return new Response(null, {
     headers: {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS, PURGE', // Allow PURGE
+      'Access-Control-Allow-Headers': 'Content-Type, X-PURGE-SECRET', // Allow secret header
     },
   });
 }
